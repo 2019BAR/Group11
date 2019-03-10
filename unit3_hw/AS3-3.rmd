@@ -1,0 +1,313 @@
+---
+title: "AS3-3: 美國的人口統計和就業資料"
+author: "第 11 組"
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: style.css
+---
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
+# 這些程式碼設定網頁的格式，並安裝、載入一些基本的套件，請大家不要去改動<br>
+rm(list=ls(all=T))
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+par(cex=0.8)
+options(scipen=20, digits=4, width=90)
+#
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(dplyr)
+```
+<hr>
+
+就業統計數據是政策制定者用來衡量經濟整體實力的最重要指標之一。在美國，政府使用現有人口調查（CPS）衡量失業率，該調查每月收集來自各種美國人的人口統計和就業信息。在本練習中，我們將使用講座中審查的主題以及一些使用2013年9月版的，具有全國代表性的數據集。數據集中的觀察結果代表2013年9月CPS中實際完成調查的人員，完整數據集有385個欄位，但在本練習中，我們將使用數據集CPSData.csv版本，它具有以下欄位：
+
++ `PeopleInHousehold`: 受訪者家庭中的人數。
++ `Region`: 受訪者居住的人口普查區域。
++ `State`: 受訪者居住的州。
++ `MetroAreaCode`: 都會區代碼，如受訪者不住都會區，則為NA；從代碼到都會區名稱的對應在`MetroAreaCodes.csv`中提供。
++ `Age`: 受訪者的年齡，以年為單位。 80代表80-84歲的人，85代表85歲及以上的人。
++ `Married`: 受訪者的婚姻狀況。
++ `Sex`: 受訪者的性別。
++ `Education`: 受訪者獲得的最高教育程度。
++ `Race`: 受訪者的種族。
++ `Hispanic`: 受訪者是否屬於西班牙裔。
++ `CountryOfBirthcode`: 識別受訪者出生國家的代碼。從代碼到國家名稱的映射在CountryCodes.csv文件中提供。
++ `Citizenship`: 受訪者的公民身份。
++ `EmploymentStatus`: 受訪者的就業狀況。
++ `Industry`: 受訪者的就業行業（僅在受僱的情況下可用）。
+
+- - -
+
+<br><br>
+
+###  Section-1 Loading and Summarizing the Dataset
+
+__§ 1.1__ How many interviewees are in the dataset?
+```{r}
+## 讀檔案
+cpsData <- read.csv("data/CPSData.csv")
+
+## 觀測值
+nrow(cpsData)
+```
+
+__§ 1.2__ Among the interviewees with a value reported for the Industry variable, what is the most common industry of employment? Please enter the name exactly how you see it.
+```{r}
+## 計算出各就業行業的筆數並由大排到小，顯示最多面談者的行業
+names(sort(table(cpsData$Industry), decreasing = T))[1]
+```
+
+__§ 1.3__ Which state has the fewest interviewees?
+```{r}
+## 計算出各州的筆數並由小排到大，顯示最少面談者的州
+names(sort(table(cpsData$State)))[1]
+```
+
+Which state has the largest number of interviewees?
+```{r}
+## 計算出各州的筆數並由大排到小，顯示最多面談者的州
+names(sort(table(cpsData$State), decreasing = T))[1]
+```
+
+__§ 1.4__ What proportion of interviewees are citizens of the United States?
+```{r}
+## 計算每一個市民類別的比數並除上總面談者人數
+table(cpsData$Citizenship)/nrow(cpsData)
+
+## 加總前兩筆
+citizenRate <- as.numeric(table(cpsData$Citizenship)/nrow(cpsData))
+citizenRate[1]+citizenRate[2]
+```
+
+__§ 1.5__ For which races are there at least 250 interviewees in the CPS dataset of Hispanic ethnicity? (Select all that apply.) 
+
++ American Indian
++ Asian
++ cBlack
++ Multiracial
++ Pacific Islander
++ White
+
+```{r}
+## 計算出各總族為西班牙裔的人數
+racesHispanic <- table(cpsData$Race[cpsData$Hispanic == 1])
+
+## 顯示有至少大於250西班牙裔人的種族
+names(racesHispanic[racesHispanic >= 250])
+```
+
+<br><br> 
+
+- - -
+
+###  Section-2 Evaluating Missing Values
+
+__§ 2.1__ Which variables have at least one interviewee with a missing (NA) value? (Select all that apply.)
+
++ PeopleInHousehold
++ Region
++ State
++ MetroAreaCode
++ Age
++ Married
++ Sex
++ Education
++ Race
++ Hispanic
++ CountryOfBirthCode
++ Citizenship
++ EmploymentStatus
++ Industry
+
+```{r}
+## 計算每個欄位NA值的筆數
+colNa <- colSums(is.na(cpsData))
+
+## 找出至少有一筆NA值的欄位
+names(colNa[colNa > 0])
+```
+
+__§ 2.2__  Which is the most accurate:
+
++ The Married variable being missing is related to the Region value for the interviewee.
++ The Married variable being missing is related to the Sex value for the interviewee.
++ The Married variable being missing is related to the Age value for the interviewee. 
++ The Married variable being missing is related to the Citizenship value for the interviewee.
++ The Married variable being missing is not related to the Region, Sex, Age, or Citizenship value for the interviewee.
+
+```{r}
+## 找尋結婚欄位的缺失值與其他哪個欄位最有相關
+table(cpsData$Region, is.na(cpsData$Married))
+table(cpsData$Sex, is.na(cpsData$Married))
+table(cpsData$Age, is.na(cpsData$Married))
+table(cpsData$Citizenship, is.na(cpsData$Married))
+
+"Ans:The Married variable being missing is related to the Age value for the interviewee is the most accurate."
+```
+
+#### 
+
+__§ 2.3__ How many states had all interviewees living in a non-metropolitan area (aka they have a missing MetroAreaCode value)? For this question, treat the District of Columbia as a state (even though it is not technically a state).
+```{r}
+## 計算各省的面談者有幾個是住在都會區
+Metropolitan <- tapply(!is.na(cpsData$MetroAreaCode), cpsData$State, sum)
+
+## 若住在都會區為0個表示其他人都住在非都會區
+names(Metropolitan[Metropolitan==0])
+
+"Ans:2個省"
+```
+
+How many states had all interviewees living in a metropolitan area? Again, treat the District of Columbia as a state.
+```{r}
+## 計算各省的面談者有幾個是住在非都會區
+nonMetropolitan <- tapply(is.na(cpsData$MetroAreaCode), cpsData$State, sum)
+
+## 若住在非都會區為0個表示其他人都住在都會區
+names(nonMetropolitan[nonMetropolitan==0])
+
+"Ans:3個省"
+```
+
+__§ 2.4__ Which region of the United States has the largest proportion of interviewees living in a non-metropolitan area?
+```{r}
+## 計算各區域有幾個人住在非都會區，除上各區域的人數，再從大排到小，選比率最大的
+sort(tapply(is.na(cpsData$MetroAreaCode), cpsData$Region, sum)/table(cpsData$Region), decreasing = T)[1]
+```
+
+__§ 2.5__ Which state has a proportion of interviewees living in a non-metropolitan area closest to 30%?
+```{r}
+## 計算各州有幾個人住在非都會區，除上各州的人數，再從大排到小，選比率最接近30%的
+sort(tapply(is.na(cpsData$MetroAreaCode), cpsData$State, sum)/table(cpsData$State), decreasing = T)[23]
+```
+
+Which state has the largest proportion of non-metropolitan interviewees, ignoring states where all interviewees were non-metropolitan?
+```{r}
+## 排除掉全部面談者住在非都會區的州
+newData <- subset(cpsData, !State %in% names(Metropolitan[Metropolitan==0])) 
+
+## 再計算各州有幾個人住在非都會區，除上各州的人數，再從大排到小，選比率最大的
+sort(tapply(is.na(newData$MetroAreaCode), newData$State, sum)/table(newData$State), decreasing = T)[1]
+```
+
+<br><br> 
+
+- - -
+
+###  Section-3 Integrating Metropolitan Area Data
+
+__§ 3.1__ How many observations (codes for metropolitan areas) are there in MetroAreaMap?
+```{r}
+metroCodes <- read.csv("data/MetroAreaCodes.csv")
+nrow(metroCodes)
+```
+
+How many observations (codes for countries) are there in CountryMap?
+```{r}
+countryCodes <- read.csv("data/CountryCodes.csv")
+nrow(countryCodes)
+```
+
+__§ 3.2__ What is the name of the variable that was added to the data frame by the merge() operation?
+```{r}
+## 改欄位名後合併(都市區代號)
+colnames(metroCodes) <- c("MetroAreaCode", "MetroArea")
+cpsData <- merge(cpsData, metroCodes, by = "MetroAreaCode", all.x = TRUE)
+
+## 新欄位名稱
+colnames(cpsData)[15]
+```
+
+How many interviewees have a missing value for the new metropolitan area variable?
+```{r}
+sum(is.na(cpsData$MetroArea))
+```
+
+__§ 3.3__ Which of the following metropolitan areas has the largest number of interviewees?
+```{r}
+## 計算每一都會區有幾筆面談者資料，並由大的小排序選最大者
+sort(table(cpsData$MetroArea), decreasing = T)[1]
+
+"若是以MIT給予的選項來看則為Boston-Cambridge-Quincy, MA-NH"
+```
+
+__§ 3.4__ Which metropolitan area has the highest proportion of interviewees of Hispanic ethnicity?
+```{r}
+## 計算每一都會區有幾筆是西班牙裔人，再除上每一都會區的總人口數，由大排到小選最大者
+sort(table(cpsData$MetroArea[cpsData$Hispanic==1])/table(cpsData$MetroArea), decreasing = T)[1]
+```
+
+__§ 3.5__ Determine the number of metropolitan areas in the United States from which at least 20% of interviewees are Asian.
+```{r}
+## 計算每一都會區有幾筆是亞裔人，再除上每一都會區的總人口數，由大排到小
+asianMetro <- sort(table(cpsData$MetroArea[cpsData$Race =="Asian"])/table(cpsData$MetroArea), decreasing = T)
+
+## 顯示亞裔比率至少大於20%的都會區
+asianMetro[asianMetro>=0.2]
+
+"Ans:4個都會區"
+```
+
+__§ 3.6__  Passing na.rm=TRUE to the tapply function, determine which metropolitan area has the smallest proportion of interviewees who have received no high school diploma.
+```{r}
+## 計算每一都會區有幾筆無高中學歷的人，再除上每一都會區的總人口數，由小排到大挑最小者
+sort(tapply(cpsData$Education == "No high school diploma", cpsData$MetroArea, mean, na.rm=TRUE))[1]
+```
+
+<br><br> 
+
+- - -
+
+###  Section-4 Integrating Country of Birth Data
+
+__§ 4.1__ What is the name of the variable added to the CPS data frame by this merge operation?
+```{r}
+## 改欄位名後合併(都市區代號)
+colnames(countryCodes) <- c("CountryOfBirthCode", "Country")
+cpsData <- merge(cpsData, countryCodes, by = "CountryOfBirthCode", all.x = TRUE)
+
+## 新欄位名稱
+colnames(cpsData)[16]
+```
+
+How many interviewees have a missing value for the new metropolitan area variable?
+```{r}
+sum(is.na(cpsData$Country))
+```
+
+__§ 4.2__ Among all interviewees born outside of North America, which country was the most common place of birth?
+```{r}
+## 排除掉出生於北美的人，計算每一出生地的面談者人數，再由大排到小選最大者(墨西哥不算)
+sort(table(cpsData$Country[cpsData$Country != "United States"]), decreasing = TRUE)[2]
+```
+
+__§ 4.3__ What proportion of the interviewees from the "New York-Northern New Jersey-Long Island, NY-NJ-PA" metropolitan area have a country of birth that is not the United States? 
+```{r}
+## 計算住在New York-Northern New Jersey-Long Island, NY-NJ-PA都會區有幾人不是出生於美國
+D<-sum(cpsData$Country[cpsData$MetroArea == "New York-Northern New Jersey-Long Island, NY-NJ-PA"] != "United States",
+       na.rm = TRUE)
+
+## 非出生於美國人的比率
+D/sum(cpsData$MetroArea == "New York-Northern New Jersey-Long Island, NY-NJ-PA", na.rm = TRUE)
+```
+
+__§ 4.4__ Which metropolitan area has the largest number (note -- not proportion) of interviewees with a country of birth in India? 
+```{r}
+## 計算每一個都會區出生於India的總人數，再由大到小排序挑最大者
+sort(table(cpsData$MetroArea[cpsData$Country == "India"]), decreasing = T)[1]
+```
+
+In Brazil?
+```{r}
+sort(table(cpsData$MetroArea[cpsData$Country == "Brazil"]), decreasing = T)[1]
+```
+
+In Somalia?
+```{r}
+sort(table(cpsData$MetroArea[cpsData$Country == "Somalia"]), decreasing = T)[1]
+```
+
+<br><br><br>
