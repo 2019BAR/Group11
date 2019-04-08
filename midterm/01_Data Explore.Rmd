@@ -1,0 +1,150 @@
+---
+title: "brazilian-ecommerce"
+author: "Tina"
+date: "2019年4月8日"
+output: html_document
+---
+
+<br>
+
+```{r echo=T, message=F, cache=F, warning=F}
+rm(list=ls(all=T))
+Sys.setlocale("LC_ALL","C")
+library(dplyr)
+library(ggplot2)
+library(caTools)
+```
+<br><hr>
+
+### 1. 讀取資料
+
+```{r}
+Geo = read.csv("brazilian-ecommerce/olist_geolocation_dataset.csv", stringsAsFactors = F)
+OrdItm = read.csv("brazilian-ecommerce/olist_order_items_dataset.csv", stringsAsFactors = F)
+OrdPay = read.csv("brazilian-ecommerce/olist_order_payments_dataset.csv", stringsAsFactors = F)
+OrdRev = read.csv("brazilian-ecommerce/olist_order_reviews_dataset.csv", stringsAsFactors = F)
+Ord = read.csv("brazilian-ecommerce/olist_orders_dataset.csv", stringsAsFactors = F)
+Prod = read.csv("brazilian-ecommerce/olist_products_dataset.csv", stringsAsFactors = F)
+Seller = read.csv("brazilian-ecommerce/olist_sellers_dataset.csv", stringsAsFactors = F)
+Cust = read.csv("brazilian-ecommerce/olist_customers_dataset.csv", stringsAsFactors = F)
+prodCat = read.csv("brazilian-ecommerce/product_category_name_translation.csv", stringsAsFactors = F)
+```
+
+
+
+
+
+<br><br><br>
+---
+
+### 2. Prod
+
+##### 2.1 整理Prod資料
+```{r}
+Prod$product_category_name = as.factor(Prod$product_category_name)
+summary(Prod)
+```
+
+##### 2.2 移除na值
+
+* 有610項產品沒有類別、名字、敘述與圖片，但其他資訊完整，所以先不要移除
+* 有2項產品長寬高為na，**是否要移除有待考慮**
+```{r}
+Prod[is.na(Prod$product_name_lenght),]
+Prod[is.na(Prod$product_weight_g),]
+```
+
+
+<br><br><br>
+---
+
+### 3. OrdItm
+```{r}
+str(OrdItm)
+OrdItm %>% filter(order_id=="00143d0f86d6fbd9f9b38ab440ac16f5") # 官網上的example
+
+# 轉換日期欄位
+OrdItm$shipping_limit_date = as.Date(as.character(OrdItm$shipping_limit_date))
+summary(OrdItm)
+```
+
+```{r}
+sapply(OrdItm[,c("order_id","product_id","seller_id")], n_distinct)
+```
+
+* The total order_item value
+* The total freight value
+* The total order value (product + freight) 
+```{r}
+S_OrdItm = OrdItm %>% 
+  group_by(order_id) %>% 
+  summarise(TTL_price = sum(price),
+         TTL_freight = sum(freight_value),
+         TTLvalue = TTL_price + TTL_freight)
+summary(S_OrdItm)
+
+S_OrdItm %>% ggplot()
+```
+
+
+
+<br><br><br><br><hr><br><br><br>
+
+<style>
+.caption {
+  color: #777;
+  margin-top: 10px;
+}
+p code {
+  white-space: inherit;
+}
+pre {
+  word-break: normal;
+  word-wrap: normal;
+  line-height: 1;
+}
+pre code {
+  white-space: inherit;
+}
+p,li {
+  font-family: "Trebuchet MS", "微軟正黑體", "Microsoft JhengHei";
+}
+
+.r{
+  line-height: 1.2;
+}
+
+title{
+  color: #cc0000;
+  font-family: "Trebuchet MS", "微軟正黑體", "Microsoft JhengHei";
+}
+
+body{
+  font-family: "Trebuchet MS", "微軟正黑體", "Microsoft JhengHei";
+}
+
+h1,h2,h3,h4,h5{
+  color: #008800;
+  font-family: "Trebuchet MS", "微軟正黑體", "Microsoft JhengHei";
+}
+
+h3{
+  color: #b36b00;
+  background: #ffe0b3;
+  line-height: 2;
+  font-weight: bold;
+}
+
+h5{
+  color: #006000;
+  background: #ffffe0;
+  line-height: 2;
+  font-weight: bold;
+}
+
+em{
+  color: #0000c0;
+  background: #f0f0f0;
+  }
+</style>
+
