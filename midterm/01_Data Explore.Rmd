@@ -43,9 +43,10 @@ prodCat = read.csv("brazilian-ecommerce/product_category_name_translation.csv", 
 ```{r}
 Prod$product_category_name = as.factor(Prod$product_category_name)
 summary(Prod)
+str(Prod)
 ```
 
-##### 2.2 移除na值
+##### 2.2 看看na值
 
 * 有610項產品沒有類別、名字、敘述與圖片，但其他資訊完整，所以先不要移除
 * 有2項產品長寬高為na，**是否要移除有待考慮**
@@ -53,6 +54,70 @@ summary(Prod)
 Prod[is.na(Prod$product_name_lenght),]
 Prod[is.na(Prod$product_weight_g),]
 ```
+
+##### 2.3 Prod + OrdItm
+```{r}
+Z = left_join(OrdItm, Prod, by = "product_id")
+
+# 算出每樣產品被買了幾次
+Y = Z %>% group_by(product_id) %>% 
+  summarise(noPurchase = n(),       # 被買了幾次
+            revenue = sum(price),)  # 總共帶來收益
+
+
+
+# 把noPurchase和revenue欄位加到原本的Prod資料集
+Prod = left_join(Prod, Y, by = "product_id")
+```
+
+看一下noPurchase欄位的分布
+```{r}
+summary(Prod$noPurchase)
+
+Prod %>% ggplot(aes(noPurchase, revenue)) + geom_point()
+
+# 依據category分類
+Prod %>% 
+  group_by(product_category_name) %>% 
+  summarise(noProd = n(),
+            noPurchase = sum(noPurchase),
+            revenue = sum(revenue),
+            photos_qty = mean(product_photos_qty)) %>% 
+  ggplot(aes(noPurchase, revenue, col = photos_qty)) +
+    geom_point()
+
+
+
+Prod[order(Prod$noPurchase, decreasing = T),] %>% head(10)
+```
+
+
+```{r}
+OrdItmRev = left_join(OrdItm, OrdRev, by = "order_id")
+OrdItmRev[, c("review_comment_title", "review_comment_message")] = NULL
+str(OrdItmRev)
+
+OrdItmRevProd = left_join(OrdItmRev, 
+                          Prod[, c("product_id", "product_category_name", "product_photos_qty", "noPurchase", "revenue")], 
+                          by = "product_id")
+str(OrdItmRevProd)
+```
+
+
+```{r}
+Prod %>% 
+  group_by(product_category_name) %>% 
+  summarise(length = mean(product_length_cm),
+            height = mean(product_height_cm),
+            width = mean(product_width_cm),
+            photos_qty = mean(product_photos_qty))
+```
+
+
+
+
+
+
 
 
 <br><br><br>
@@ -84,6 +149,12 @@ S_OrdItm = OrdItm %>%
 summary(S_OrdItm)
 
 S_OrdItm %>% ggplot()
+```
+
+
+### 4. Seller + Geolocation
+```{r}
+SeGeo = left_join(Seller, Geo, by = c("seller_zip_code_prefix" = "geolocation_zip_code_prefix"))
 ```
 
 
