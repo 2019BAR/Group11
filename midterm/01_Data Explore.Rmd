@@ -1,7 +1,7 @@
 ---
-title: "brazilian-ecommerce"
+title: "brazilian-ecommerce 01_Data Explore"
 author: "Tina"
-date: "2019年4月8日"
+date: "`r Sys.time()`"
 output: html_document
 ---
 
@@ -37,83 +37,150 @@ prodCat = read.csv("brazilian-ecommerce/product_category_name_translation.csv", 
 <br><br><br>
 ---
 
-### 2. Prod
+### 2. Prod: 整理資料 + 新增變數
 
-##### 2.1 整理Prod資料
+##### 整理Prod資料
 ```{r}
 Prod$product_category_name = as.factor(Prod$product_category_name)
-summary(Prod)
-str(Prod)
+
+# 轉成英文類別名稱
+Prod = merge(Prod, prodCat, by.x="product_category_name", by.y = "X...product_category_name")
+names(Prod)
 ```
 
-##### 2.2 看看na值
+##### 新增欄位
 
-* 有610項產品沒有類別、名字、敘述與圖片，但其他資訊完整，所以先不要移除
-* 有2項產品長寬高為na，**是否要移除有待考慮**
-```{r}
-Prod[is.na(Prod$product_name_lenght),]
-Prod[is.na(Prod$product_weight_g),]
-```
+join OrdItm後算出
 
-##### 2.3 Prod + OrdItm
+* noPurchase: 商品共被買了幾次
+* revenue: 商品總共帶來多少收益
+
 ```{r}
-Z = left_join(OrdItm, Prod, by = "product_id")
+ItmProd = left_join(OrdItm, Prod, by = "product_id")
 
 # 算出每樣產品被買了幾次
-Y = Z %>% group_by(product_id) %>% 
+ItmProd = ItmProd %>% 
+  group_by(product_id) %>% 
   summarise(noPurchase = n(),       # 被買了幾次
             revenue = sum(price),)  # 總共帶來收益
 
-
-
 # 把noPurchase和revenue欄位加到原本的Prod資料集
-Prod = left_join(Prod, Y, by = "product_id")
+Prod = left_join(Prod, ItmProd, by = "product_id")
 ```
 
-看一下noPurchase欄位的分布
+### 3. Ord:
+
+##### 欄位格式轉換
 ```{r}
-summary(Prod$noPurchase)
-
-Prod %>% ggplot(aes(noPurchase, revenue)) + geom_point()
-
-# 依據category分類
-Prod %>% 
-  group_by(product_category_name) %>% 
-  summarise(noProd = n(),
-            noPurchase = sum(noPurchase),
-            revenue = sum(revenue),
-            photos_qty = mean(product_photos_qty)) %>% 
-  ggplot(aes(noPurchase, revenue, col = photos_qty)) +
-    geom_point()
-
-
-
-Prod[order(Prod$noPurchase, decreasing = T),] %>% head(10)
+Ord$order_status = as.factor(Ord$order_status)
+Ord$order_purchase_timestamp = as.Date(as.character(Ord$order_purchase_timestamp))
+Ord$order_approved_at = as.Date(as.character(Ord$order_approved_at))
+Ord$order_delivered_carrier_date = as.Date(as.character(Ord$order_delivered_carrier_date))
+Ord$order_delivered_customer_date = as.Date(as.character(Ord$order_delivered_customer_date))
+Ord$order_estimated_delivery_date = as.Date(as.character(Ord$order_estimated_delivery_date))
+summary(Ord)
 ```
 
+##### 新增欄位
+
+* delivery_days: 付款後到收貨經過幾天
+```{r}
+Ord = Ord %>% mutate(delivery_days = as.numeric(order_delivered_customer_date - order_approved_at))
+summary(Ord)
+```
+
+### 4. Rev:
+
+##### 欄位格式轉換
+```{r}
+OrdRev$review_creation_date = as.Date(as.character(OrdRev$review_creation_date))
+OrdRev$review_answer_timestamp = as.Date(as.character(OrdRev$review_answer_timestamp))
+summary(OrdRev)
+```
+
+##### 新增欄位
+
+* comment_length: 評論文字長度
+* answer_delay: 過了幾天才留評論
+```{r}
+OrdRev = OrdRev %>% mutate(comment_length = nchar(OrdRev$review_comment_message),
+                  answer_delay = as.numeric(review_answer_timestamp - review_creation_date))
+summary(OrdRev)
+```
+
+
+### 5. OrdItm:
 
 ```{r}
-OrdItmRev = left_join(OrdItm, OrdRev, by = "order_id")
-OrdItmRev[, c("review_comment_title", "review_comment_message")] = NULL
-str(OrdItmRev)
-
-OrdItmRevProd = left_join(OrdItmRev, 
-                          Prod[, c("product_id", "product_category_name", "product_photos_qty", "noPurchase", "revenue")], 
-                          by = "product_id")
-str(OrdItmRevProd)
+summary(OrdItm)
 ```
 
+##### 新增欄位，合併到Ord資料集裡
+
+* 總商品價格
+* 總商品運費
+* 總訂單費用
+* 總商品件數
 
 ```{r}
-Prod %>% 
-  group_by(product_category_name) %>% 
-  summarise(length = mean(product_length_cm),
-            height = mean(product_height_cm),
-            width = mean(product_width_cm),
-            photos_qty = mean(product_photos_qty))
+Z = OrdItm %>% 
+  group_by(order_id) %>% 
+  summarise(order_item_value = sum(price),
+         order_freight_value = sum(freight_value),
+         order_value = sum(order_item_value, order_freight_value),
+         order_item_count = n())
+head(Z)
+```
+
+```{r}
+Ord = merge(Ord, Z, by="order_id")
+str(Ord)
+```
+
+### 6. OrdPay
+
+```{r}
+summary(OrdPay)
 ```
 
 
+### 7. Cust
+
+##### 欄位轉換
+```{r}
+Cust$customer_city = as.factor(Cust$customer_city)
+Cust$customer_state = as.factor(Cust$customer_state)
+summary(Cust)
+```
+  
+
+
+### 8. Geo
+
+##### 欄位轉換
+```{r}
+Geo$geolocation_city = as.factor(Geo$geolocation_city)
+Geo$geolocation_state = as.factor(Geo$geolocation_state)
+summary(Geo)
+```
+
+
+### 9. Seller
+
+##### 欄位轉換
+```{r}
+Seller$seller_city = as.factor(Seller$seller_city)
+Seller$seller_state = as.factor(Seller$seller_state)
+summary(Seller)
+```
+
+
+
+### 10. 儲存為 rdata
+
+```{r}
+save(Cust, Geo, Ord, OrdItm, OrdPay, OrdRev, Prod, Seller, file = "rdata/Z.rdata")
+```
 
 
 
@@ -122,40 +189,6 @@ Prod %>%
 
 <br><br><br>
 ---
-
-### 3. OrdItm
-```{r}
-str(OrdItm)
-OrdItm %>% filter(order_id=="00143d0f86d6fbd9f9b38ab440ac16f5") # 官網上的example
-
-# 轉換日期欄位
-OrdItm$shipping_limit_date = as.Date(as.character(OrdItm$shipping_limit_date))
-summary(OrdItm)
-```
-
-```{r}
-sapply(OrdItm[,c("order_id","product_id","seller_id")], n_distinct)
-```
-
-* The total order_item value
-* The total freight value
-* The total order value (product + freight) 
-```{r}
-S_OrdItm = OrdItm %>% 
-  group_by(order_id) %>% 
-  summarise(TTL_price = sum(price),
-         TTL_freight = sum(freight_value),
-         TTLvalue = TTL_price + TTL_freight)
-summary(S_OrdItm)
-
-S_OrdItm %>% ggplot()
-```
-
-
-### 4. Seller + Geolocation
-```{r}
-SeGeo = left_join(Seller, Geo, by = c("seller_zip_code_prefix" = "geolocation_zip_code_prefix"))
-```
 
 
 

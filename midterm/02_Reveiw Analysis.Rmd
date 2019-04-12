@@ -1,0 +1,156 @@
+---
+title: "brazilian-ecommerce 02_Review Analysis"
+author: "Tina"
+date: "`r Sys.time()`"
+output: html_document
+---
+
+<br>
+
+```{r echo=T, message=F, cache=F, warning=F}
+rm(list=ls(all=T))
+Sys.setlocale("LC_ALL","C")
+library(dplyr)
+library(ggplot2)
+library(caTools)
+
+load("rdata/Z.rdata")
+```
+<br><hr>
+
+
+### 【A】 Prod
+
+##### 跟 Review 一起看
+```{r}
+Y = OrdRev %>% select(review_id, order_id, review_score, comment_length, answer_delay) %>% 
+  left_join(., OrdItm[, c("order_id", "product_id")], by = "order_id") %>% 
+  right_join(., Prod, by = "product_id")
+
+# 移除重複的資料
+Y = Y[!duplicated(Y),]
+
+n_distinct(Y$product_id)
+str(Y)
+```
+
+
+##### 找出高利潤商品分類
+
+依據分類group_by
+```{r}
+Prod_cat = Y %>% 
+  group_by(product_category_name_english) %>% 
+  summarise(noProd = n(),
+            noPurchase = sum(noPurchase),              # 被購買次數
+            revenue = sum(revenue),                    # 總獲利
+            RevPerProd = revenue/noPurchase,           # 商品平均獲利
+            photos_qty = mean(product_photos_qty),     # 平均圖片數量
+            avg_review_score = mean(review_score),     # 平均評論分數
+            avg_comment_length = mean(comment_length), # 平均評論長度
+            avg_answer_delay = mean(answer_delay)      # 平均評論回覆天數
+            )  
+
+# 選出前十名
+HighRevenueProd = Prod_cat[order(Prod_cat$RevPerProd, decreasing = T),"product_category_name_english"] %>% head(10) 
+
+Prod_cat$HighRevenueProd = ifelse(
+  Prod_cat$product_category_name_english %in% HighRevenueProd$product_category_name_english,
+  1, 0)
+
+```
+
+
+##### 高利潤商品類別的評論分數是否有比較高?
+
+* use t.test 
+
+```{r}
+boxplot(avg_review_score ~ HighRevenueProd, data = Prod_cat)
+
+t.test(Prod_cat$avg_review_score ~ Prod_cat$HighRevenueProd)
+
+# p-value =  0.09296
+# p-value > 0.05
+# 不拒絕「高利潤商品的avg_review_score的相等」的虛無假設
+```
+
+
+##### 
+
+```{r}
+summary(Y)
+
+```
+
+
+
+
+
+
+
+<br><br><br>
+---
+
+
+
+<br><br><br><br><hr><br><br><br>
+
+<style>
+.caption {
+  color: #777;
+  margin-top: 10px;
+}
+p code {
+  white-space: inherit;
+}
+pre {
+  word-break: normal;
+  word-wrap: normal;
+  line-height: 1;
+}
+pre code {
+  white-space: inherit;
+}
+p,li {
+  font-family: "Trebuchet MS", "微軟正黑體", "Microsoft JhengHei";
+}
+
+.r{
+  line-height: 1.2;
+}
+
+title{
+  color: #cc0000;
+  font-family: "Trebuchet MS", "微軟正黑體", "Microsoft JhengHei";
+}
+
+body{
+  font-family: "Trebuchet MS", "微軟正黑體", "Microsoft JhengHei";
+}
+
+h1,h2,h3,h4,h5{
+  color: #008800;
+  font-family: "Trebuchet MS", "微軟正黑體", "Microsoft JhengHei";
+}
+
+h3{
+  color: #b36b00;
+  background: #ffe0b3;
+  line-height: 2;
+  font-weight: bold;
+}
+
+h5{
+  color: #006000;
+  background: #ffffe0;
+  line-height: 2;
+  font-weight: bold;
+}
+
+em{
+  color: #0000c0;
+  background: #f0f0f0;
+  }
+</style>
+
