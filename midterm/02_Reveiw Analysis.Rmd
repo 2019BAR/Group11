@@ -75,14 +75,62 @@ t.test(Prod_cat$avg_review_score ~ Prod_cat$HighRevenueProd)
 # 不拒絕「高利潤商品的avg_review_score的相等」的虛無假設
 ```
 
+### 【B】80/20法則、長尾理論
 
-##### 
-
+##### Long-Tail Thoery
 ```{r}
-summary(Y)
-
+Prod = Prod[order(Prod$revenue, decreasing = T),]
+Prod$id = seq(1, nrow(Prod), 1)
 ```
 
+
+
+```{r}
+Prod %>%
+  filter(revenue > 3000) %>%
+  ggplot(aes(id, revenue)) + geom_point() + geom_smooth(method="lm")
+```
+
+### 【C】評論
+
+##### Ord + OrdRev
+
+```{r}
+OR = OrdRev %>% left_join(., Ord, by = "order_id") 
+
+# 移除重複的資料
+OR = OR[!duplicated(OR),]
+```
+
+只有97256筆交易有評論
+```{r}
+n_distinct(Y$order_id)  # 97256
+```
+
+
+查看na值
+```{r}
+colSums(is.na(OR))
+```
+
+##### 看一下 review_score 的分布
+
+* **57.42%**的交易都為5星
+* **76.62%**的交易都可以獲得4星以上評論分數
+* **11.86%**的交易獲得1星
+```{r}
+OR$review_score %>% table %>% prop.table()
+0.19200 + 0.57420
+```
+
+```{r}
+OR %>% ggplot(aes(review_score)) + geom_histogram(aes(y=..count..), binwidth=0.5)
+```
+
+
+```{r}
+OR  %>% ggplot(aes(review_score, fill = order_status)) + geom_bar(position = "dodge")
+```
 
 
 
