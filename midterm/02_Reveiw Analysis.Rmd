@@ -91,7 +91,7 @@ Prod %>%
   ggplot(aes(id, revenue)) + geom_point() + geom_smooth(method="lm")
 ```
 
-### 【C】評論
+### 【C】低分評論的原因
 
 ##### Ord + OrdRev
 
@@ -121,6 +121,7 @@ colSums(is.na(OR))
 ```{r}
 OR$review_score %>% table %>% prop.table()
 0.19200 + 0.57420
+0.11858+0.03235
 ```
 
 ```{r}
@@ -128,8 +129,64 @@ OR %>% ggplot(aes(review_score)) + geom_histogram(aes(y=..count..), binwidth=0.5
 ```
 
 
+##### 增加low_score的欄位
+有15.093%的交易評分得到1or2顆星
 ```{r}
-OR  %>% ggplot(aes(review_score, fill = order_status)) + geom_bar(position = "dodge")
+OR$low_score = sapply(OR$review_score, function(x){
+  ifelse(x<4, TRUE, FALSE)
+  })
+
+prop.table(table(OR$low_score))
+```
+
+
+##### 運送時間 v.s. 低評分
+
+```{r}
+OR = filter(OR, delivery_days>0 , delivery_days<100)
+summary(OR$delivery_days)
+```
+
+
+
+
+探討問題：低評分的交易運送時間是否與高評分的交易運送時間有顯著差異
+
+使用t.test檢定
+H0: 低評分交易與高評分交易的delivery_days相等
+H1: 低評分交易與高評分交易的delivery_days不相等
+
+```{r}
+t.test(OR$delivery_days ~ OR$low_score)
+
+# p-value < 0.05
+# 拒絕「高利潤商品的avg_review_score的相等」的虛無假設
+```
+
+```{r}
+OR %>% ggplot(aes(delivery_days, fill = low_score)) + 
+  geom_histogram(aes(y = ..density..),position = "dodge") + 
+  xlim(0, 100)
+```
+
+
+```{r}
+mean(OR[OR$low_score==F, "delivery_days"])
+mean(OR[OR$low_score==T, "delivery_days"])
+```
+
+##### 最好控制在多久的運送時間?
+
+```{r}
+hist(OR[OR$low_score==T, "delivery_days"])
+```
+
+
+p-value = 0 ...............?
+
+```{r}
+fit = goodfit(OR[OR$low_score==T, "delivery_days"], type = "poisson")
+summary(fit)
 ```
 
 
