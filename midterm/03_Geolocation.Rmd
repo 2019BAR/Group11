@@ -1,0 +1,159 @@
+---
+title: "3. GEO"
+author: "Tina"
+date: "2019年4月16日"
+output: html_document
+---
+
+```{r echo=T, message=F, cache=F, warning=F}
+rm(list=ls(all=T))
+Sys.setlocale("LC_ALL","C")
+pacman::p_load(dplyr, ggplot2, plotly)
+load("rdata/Z.rdata")
+```
+
+
+```{r}
+library(maps)
+Brazil = map_data("world") %>% filter(region=="Brazil")
+
+brazilPlot = ggplot() +
+  geom_polygon(data = Brazil, aes(x=long, y = lat, group = group), fill="gray")
+```
+
+```{r}
+# Removing some outliers
+#Brazils most Northern spot is at 5 deg 16′ 27.8″ N latitude.;
+Geo = Geo[Geo$geolocation_lat <= 5.27438888,]
+#it’s most Western spot is at 73 deg, 58′ 58.19″W Long.
+Geo = Geo[Geo$geolocation_lng >= -73.98283055,]
+#It’s most southern spot is at 33 deg, 45′ 04.21″ S Latitude.
+Geo = Geo[Geo$geolocation_lat >= -33.75116944,]
+#It’s most Eastern spot is 34 deg, 47′ 35.33″ W Long.
+Geo = Geo[Geo$geolocation_lng <=  -34.79314722,]
+```
+
+```{r}
+# selllocation = Geo %>% 
+#   group_by(geolocation_city) %>% 
+#   summarise(selllat = max(geolocation_lat),
+#             selllng = max(geolocation_lng))
+
+
+```
+
+```{r}
+# library(Imp)
+# install.packages("Imp")
+```
+
+
+
+
+
+---
+
+* 1個zip_code_prefix最多有1146個點
+
+```{r}
+n_distinct(Geo$geolocation_zip_code_prefix)
+table(Geo$geolocation_zip_code_prefix) %>% table %>% tail
+```
+
+每個zip_code只取一個點
+```{r}
+custlocation = Geo %>% 
+  group_by(geolocation_zip_code_prefix) %>% 
+  summarise(custlat = max(geolocation_lat),
+            custlng = max(geolocation_lng))
+```
+
+
+merge data: Custome + Order + Geolocation
+```{r}
+# custOrd = left_join(Ord, Cust, by="customer_id")
+# custOrdGeo = merge(custOrd, Geo, by.x = "customer_zip_code_prefix", by.y = "geolocation_zip_code_prefix", all.x = T)
+
+COG = Ord %>% 
+  left_join(., Cust, by="customer_id") %>% 
+  left_join(.,custlocation, by= c("customer_zip_code_prefix"="geolocation_zip_code_prefix"))
+
+```
+
+看每個order都來自哪裡
+```{r}
+g = brazilPlot +
+  geom_point(data = COG,aes(x=custlng,y=custlat,color=customer_state),size=0.2)
+ggplotly(g)
+```
+
+
+
+單純直接把Geo這個資料集畫出來
+```{r}
+brazilPlot +
+  geom_point(data = Geo, aes(x=geolocation_lng, y=geolocation_lat, color=geolocation_state),size=0.2)
+```
+
+
+
+```{r}
+
+```
+
+
+
+```{r}
+States = COG %>% group_by(customer_state) %>% 
+  summarise(
+    noCust = n_distinct(customer_id),                              # 總共有幾個顧客
+    noOrder = n(),                                                 # 總共有幾筆交易
+    noItem = sum(order_item_count),                                # 總共買幾個產品
+    avgItem = mean(order_item_count),                              # 平均每個交易買幾個產品
+    totalRevenue = sum(order_item_value),                          # 總共Revenue
+    avgRevenue = mean(order_item_value),                           # 平均每筆交易的Revenue (客單價)
+    avgFreight = mean(order_freight_value),                        # 平均每筆交易的freight運費
+    avgDeliveryDays = mean(delivery_days, na.rm = T),                         # 平均運送天數
+    cancelStatusProportion = mean(order_status=="canceled"),       # 棄單比率
+    deliveredStatusProportion = mean(order_status=="delivered")    # 成單比率
+    )
+```
+
+
+```{r}
+States = Geo %>% group_by(geolocation_state) %>% 
+  summarise(lng = mean(geolocation_lng),
+            lat = mean(geolocation_lat)) %>% 
+  right_join(., States, by = c("geolocation_state" = "customer_state"))
+
+summary(States)
+```
+
+
+```{r}
+g =  brazilPlot +
+  geom_point(data = States,
+             aes(x=lng, y=lat, color = cancelStatusProportion, size = noOrder)
+             )
+ggplotly(g)
+```
+
+
+
+```{r}
+g = ggplot(States, aes(x=avgItem, y=avgRevenue, col=avgDeliveryDays)) +
+  geom_point(aes(size=noCust)) +
+  geom_text(aes(label=geolocation_state), size=4)
+ggplotly(g)
+```
+
+
+
+
+
+
+
+
+
+
+
