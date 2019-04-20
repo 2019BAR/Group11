@@ -33,23 +33,6 @@ Geo = Geo[Geo$geolocation_lat >= -33.75116944,]
 Geo = Geo[Geo$geolocation_lng <=  -34.79314722,]
 ```
 
-```{r}
-# selllocation = Geo %>% 
-#   group_by(geolocation_city) %>% 
-#   summarise(selllat = max(geolocation_lat),
-#             selllng = max(geolocation_lng))
-
-
-```
-
-```{r}
-# library(Imp)
-# install.packages("Imp")
-```
-
-
-
-
 
 ---
 
@@ -60,24 +43,13 @@ n_distinct(Geo$geolocation_zip_code_prefix)
 table(Geo$geolocation_zip_code_prefix) %>% table %>% tail
 ```
 
-每個zip_code只取一個點
+
+
+merge data: Custome + Order + Geolocation + OrderPayment
 ```{r}
-custlocation = Geo %>% 
-  group_by(geolocation_zip_code_prefix) %>% 
-  summarise(custlat = max(geolocation_lat),
-            custlng = max(geolocation_lng))
-```
-
-
-merge data: Custome + Order + Geolocation
-```{r}
-# custOrd = left_join(Ord, Cust, by="customer_id")
-# custOrdGeo = merge(custOrd, Geo, by.x = "customer_zip_code_prefix", by.y = "geolocation_zip_code_prefix", all.x = T)
-
-COG = Ord %>% 
-  left_join(., Cust, by="customer_id") %>% 
-  left_join(.,custlocation, by= c("customer_zip_code_prefix"="geolocation_zip_code_prefix"))
-
+COG = OrdPay[!duplicated(OrdPay$order_id),] %>% 
+  right_join(Ord, by = "order_id") %>% 
+  left_join(Cust, by="customer_id")
 ```
 
 看每個order都來自哪裡
@@ -96,13 +68,6 @@ brazilPlot +
 ```
 
 
-
-```{r}
-
-```
-
-
-
 ```{r}
 States = COG %>% group_by(customer_state) %>% 
   summarise(
@@ -113,9 +78,13 @@ States = COG %>% group_by(customer_state) %>%
     totalRevenue = sum(order_item_value),                          # 總共Revenue
     avgRevenue = mean(order_item_value),                           # 平均每筆交易的Revenue (客單價)
     avgFreight = mean(order_freight_value),                        # 平均每筆交易的freight運費
-    avgDeliveryDays = mean(delivery_days, na.rm = T),                         # 平均運送天數
+    avgDeliveryDays = mean(delivery_days),                         # 平均運送天數
     cancelStatusProportion = mean(order_status=="canceled"),       # 棄單比率
-    deliveredStatusProportion = mean(order_status=="delivered")    # 成單比率
+    deliveredStatusProportion = mean(order_status=="delivered"),   # 成單比率
+    payType_boleto = mean(payment_type == "boleto"),               # boleto付款比率
+    payType_CreditCard = mean(payment_type == "credit_card"),      # credit card付款比率
+    payType_debitCard = mean(payment_type == "debit_card"),        # debit card付款比率
+    payType_voucher = mean(payment_type == "voucher")              # voucher付款比率
     )
 ```
 
@@ -146,14 +115,3 @@ g = ggplot(States, aes(x=avgItem, y=avgRevenue, col=avgDeliveryDays)) +
   geom_text(aes(label=geolocation_state), size=4)
 ggplotly(g)
 ```
-
-
-
-
-
-
-
-
-
-
-

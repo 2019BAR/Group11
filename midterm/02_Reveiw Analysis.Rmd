@@ -19,77 +19,176 @@ load("rdata/Z.rdata")
 <br><hr>
 
 
+
+
 ### 【A】 Prod
 
-##### 跟 Review 一起看
+
+##### 新增type欄位
+
 ```{r}
-Y = OrdRev %>% select(review_id, order_id, review_score, comment_length, answer_delay) %>% 
-  left_join(., OrdItm[, c("order_id", "product_id")], by = "order_id") %>% 
-  right_join(., Prod, by = "product_id")
+# 先找出含有多種產品的分類
+BigCats = names((Prod$product_category_name_english %>% table))[(Prod$product_category_name_english %>% table) > 300 ]
 
-# 移除重複的資料
-Y = Y[!duplicated(Y),]
+# 若屬於大分類的，type則不變
+Prod$product_type = ifelse(Prod$product_category_name_english %in% BigCats, 
+                           Prod$product_category_name_english, 
+                           NA)
 
-n_distinct(Y$product_id)
-str(Y)
+# 合併子類別為大類別: product_type
+Prod[ grepl("furniture", Prod$product_category_name_english) , "product_type"] = "furniture"
+Prod[ grepl("art", Prod$product_category_name_english) , "product_type"] = "art"
+Prod[ grepl("fashio", Prod$product_category_name_english) , "product_type"] = "fashion"
+Prod[ grepl("construction_tools", Prod$product_category_name_english) , "product_type"] = "construction_tools"
+Prod[ grepl("costruction_tools", Prod$product_category_name_english) , "product_type"] = "construction_tools"
+Prod[ grepl("home", Prod$product_category_name_english) , "product_type"] = "home"
+Prod[ grepl("books", Prod$product_category_name_english) , "product_type"] = "books"
+Prod[ grepl("food", Prod$product_category_name_english) , "product_type"] = "food"
+Prod[ grepl("drink", Prod$product_category_name_english) , "product_type"] = "food"
+
+
+# 沒被合併到的子分類全部歸類為others
+Prod[is.na(Prod$product_type), "product_type"] = "others"
+
+Prod$product_type = as.factor(Prod$product_type)
+
+# 查看type分布
+table(Prod$product_type) %>% sort(decreasing = T)
+```
+
+
+##### 跟 Review 一起看
+
+新增Prod欄位
+
+* 平均運送天數
+* 平均評論分數
+* 平均評論長度
+* 平均回覆天數
+
+```{r}
+Prod = OrdRev %>% 
+  # 計算每筆訂單
+  group_by(order_id) %>% 
+  summarise(avgReviewScore = mean(review_score, na.rm = T),
+            avgCommentLength = mean(comment_length, na.rm = T),
+            avgCommentAnswerDelay = mean(answer_delay, na.rm = T)) %>% 
+  right_join(OrdItm[,c("order_id", "product_id")], by = "order_id") %>% 
+  # 多合併delivery_days欄位
+  left_join(Ord[Ord$delivery_days>0 ,c("order_id", "delivery_days")], by = "order_id") %>% 
+  # 計算每個產品
+  group_by(product_id) %>%     
+  summarise(avgDeliveryDays = mean(delivery_days, na.rm = T),                   # 平均運送天數
+            avgReviewScore = mean(avgReviewScore, na.rm = T),                   # 平均評論分數
+            avgCommentLength = mean(avgCommentLength, na.rm = T),               # 平均評論長度
+            avgCommentAnswerDelay = mean(avgCommentAnswerDelay, na.rm = T)) %>% # 平均回覆天數
+  right_join(Prod, by="product_id")
+summary(Prod)
+```
+
+計算每個產品種類(type)
+```{r}
+Y = Prod %>% 
+  group_by(product_type) %>% 
+  summarise(noProd = n(),                              # 有幾個不同的產品
+            noPurchase = sum(noPurchase),              # 總共被購買次數
+            revenue = sum(revenue),                    # 總獲利
+            RevPerProd = revenue/noPurchase,           # 商品平均獲利
+            photos_qty = mean(product_photos_qty),     # 平均圖片數量
+            avgDeliveryDays = mean(avgDeliveryDays, na.rm = T),             # 平均運送天數
+            avgReviewScore = mean(avgReviewScore, na.rm = T),               # 平均評論分數
+            avgCommentLength = mean(avgCommentLength, na.rm = T),           # 平均評論長度
+            avgCommentAnswerDelay = mean(avgCommentAnswerDelay, na.rm = T)) # 平均回覆天數
+
+summary(Y)
 ```
 
 
 ##### 找出高利潤商品分類
 
-依據分類group_by
+
+畫畫囉
+
 ```{r}
-Prod_cat = Y %>% 
-  group_by(product_category_name_english) %>% 
-  summarise(noProd = n(),
-            noPurchase = sum(noPurchase),              # 被購買次數
-            revenue = sum(revenue),                    # 總獲利
-            RevPerProd = revenue/noPurchase,           # 商品平均獲利
-            photos_qty = mean(product_photos_qty),     # 平均圖片數量
-            avg_review_score = mean(review_score),     # 平均評論分數
-            avg_comment_length = mean(comment_length), # 平均評論長度
-            avg_answer_delay = mean(answer_delay)      # 平均評論回覆天數
-            )  
+g = Y %>% ggplot(aes(x=noPurchase, y=revenue, size=avgReviewScore, col=noProd)) +
+  geom_point(alpha = 0.3) +
+  geom_text(aes(label = product_type), size=7, check_overlap = TRUE, vjust = -0.7, nudge_y = 0.5) +
+  geom_hline(aes(yintercept=550000), colour="#990000", linetype="dashed") +
+  geom_vline(aes(xintercept=5500), colour="#BB0000", linetype="dashed") +
+  xlim(0,12000) + ylim(0, 1270000) +
+  labs(title ="產品類別", x = "銷售量", y = "銷售額")
+g
+```
 
-# 選出前十名
-HighRevenueProd = Prod_cat[order(Prod_cat$RevPerProd, decreasing = T),"product_category_name_english"] %>% head(10) 
-
-Prod_cat$HighRevenueProd = ifelse(
-  Prod_cat$product_category_name_english %in% HighRevenueProd$product_category_name_english,
-  1, 0)
-
+儲存圖片
+```{r}
+ggsave(g, file = "Product Type.png",width = 12,height = 9)
 ```
 
 
-##### 高利潤商品類別的評論分數是否有比較高?
 
-* use t.test 
 
-```{r}
-boxplot(avg_review_score ~ HighRevenueProd, data = Prod_cat)
-
-t.test(Prod_cat$avg_review_score ~ Prod_cat$HighRevenueProd)
-
-# p-value =  0.09296
-# p-value > 0.05
-# 不拒絕「高利潤商品的avg_review_score的相等」的虛無假設
-```
 
 ### 【B】80/20法則、長尾理論
 
-##### Long-Tail Thoery
+##### 長尾理論 Long-Tail Thoery
 ```{r}
 Prod = Prod[order(Prod$revenue, decreasing = T),]
 Prod$id = seq(1, nrow(Prod), 1)
 ```
 
+畫畫囉
+```{r}
+g = Prod %>%
+  filter(revenue > 3000) %>%
+  ggplot(aes(id, revenue)) + 
+  geom_line(colour="steelblue", size=3) + 
+  # geom_point(colour="navyblue", size=3)
+  labs(title ="Long-Tail Theory", x = "產品", y = "銷售額")
+g
+```
+
+儲存圖片
+```{r}
+ggsave(g, file = "2080_Long Tail Theory.png",width = 7,height = 5)
+```
+
+##### 80/20法則
+
+* 前百分之二十的商品利潤約佔總利潤的75%
+
+```{r}
+# 總商品數量的百分之二十
+nrow(Prod)*0.2  # 6465.6
+
+TwenProdValue = cumsum(Prod$revenue[1:6466])[6466]
+TotalProdValue = sum(Prod$revenue)
+
+TwenProdValue/TotalProdValue  # 0.7474123
+```
+
+```{r}
+sort(Prod$revenue, decreasing = T)[6646]   # 399.96
+Twenproduct = filter(Prod, revenue>=399.96)
+# A=left_join(Twenproduct,OrdItm,by="product_id")
+# B=left_join(A,Ord,by="order_id")
+```
+
 
 
 ```{r}
-Prod %>%
-  filter(revenue > 3000) %>%
-  ggplot(aes(id, revenue)) + geom_point() + geom_smooth(method="lm")
+Twenproduct = filter(Twenproduct, avgDeliveryDays>0)
+
+ggplot(Twenproduct,aes(x=noPurchase,y=avgDeliveryDays,color=revenue))+
+  geom_point()
 ```
+
+
+
+<br><br>
+---
+<br><br><br>
+
 
 ### 【C】低分評論的原因
 
@@ -102,16 +201,6 @@ OR = OrdRev %>% left_join(., Ord, by = "order_id")
 OR = OR[!duplicated(OR),]
 ```
 
-只有97256筆交易有評論
-```{r}
-n_distinct(Y$order_id)  # 97256
-```
-
-
-查看na值
-```{r}
-colSums(is.na(OR))
-```
 
 ##### 看一下 review_score 的分布
 
@@ -175,18 +264,34 @@ mean(OR[OR$low_score==F, "delivery_days"])
 mean(OR[OR$low_score==T, "delivery_days"])
 ```
 
-##### 最好控制在多久的運送時間?
-
 ```{r}
-hist(OR[OR$low_score==T, "delivery_days"])
+OR$order_status %>% table
 ```
 
 
-p-value = 0 ...............?
+```{r}
+g = OR %>% group_by(review_score) %>% 
+  summarise(avgDeliveryDays = mean(delivery_days, na.rm=T),        # 平均運送天數
+            avgAnswerDelay = mean(answer_delay, na.rm=T),          # 平均回覆天數
+            avgItemCount = mean(order_item_count, na.rm=T),        # 平均購買商品數
+            avgItemValue = mean(order_item_value, na.rm=T),        # 平均客單價
+            avgFreightValue = mean(order_freight_value, na.rm=T),  # 平均運費
+            deliveredProportion = mean(order_status=="canceled"),  # 棄單率
+            deliveredProportion = mean(order_status=="delivered"), # 成單率
+            avgCommentLength = mean(comment_length, na.rm=T)       # 平均評論長度
+            ) %>% 
+  ggplot(aes(x=avgDeliveryDays, y=avgFreightValue, 
+             col=avgCommentLength, size=avgItemCount)) +
+  geom_point() +
+  geom_path(size = 1, alpha=.2) +
+  geom_text(aes(label = review_score), check_overlap = TRUE, vjust=-.5, size=6) +
+  ylim(21,28) +
+  labs(title ="評論分數", x = "評論長度", y = "運費")
+g
+```
 
 ```{r}
-fit = goodfit(OR[OR$low_score==T, "delivery_days"], type = "poisson")
-summary(fit)
+ggsave(g, file = "Review Score.png",width = 7,height = 5)
 ```
 
 
