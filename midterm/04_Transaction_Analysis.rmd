@@ -1,0 +1,255 @@
+---
+title: Transaction
+author: 第十一組
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: style.css
+---
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=F}
+# 這些程式碼設定網頁的格式，並安裝、載入一些基本的套件，請大家不要去改動<br>
+rm(list=ls(all=T))
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+par(cex=0.8)
+options(scipen=20, digits=5, width=80)
+# if(!require(pacman)) install.packages("pacman")
+library(dplyr)
+library(ggplot2)
+# 讀取資料
+load("rdata/Z.rdata")
+```
+<hr>
+
+### 1. Ord
+
+##### 1.1 付款後到實際收到貨的時間長短對於顧客的回購率(評分)的影響
+```{r}
+## 由於評論的資料有部分訂單存在重複評分，因此計算其平均
+NewOrdRev <- OrdRev %>% group_by(order_id) %>% summarize(review_score = mean(review_score))
+
+## Ord與NewOrdRev合併
+NewOrd <- left_join(Ord, NewOrdRev, by = "order_id")
+
+## 時間長短所對應的平均分數
+TimeScore <- NewOrd %>% group_by(delivery_days) %>%
+  summarize(score = mean(review_score), num = n())
+
+## 排除掉小於20筆的資料
+TimeScore <- TimeScore[TimeScore$num>=20,]
+
+## 畫圖
+ggplot(TimeScore, aes(x=delivery_days, y=score)) +
+  geom_col()
+
+```
+<br>
+
+##### 1.2 新舊客戶的購買行為
+```{r}
+## NewOrd與Cust合併
+NewOrd <- left_join(NewOrd, Cust[,c(1,2)], by = "customer_id")
+
+## 新舊顧客比例
+EachCust <- NewOrd %>% group_by(customer_unique_id) %>% na.omit() %>%
+  summarize(buy_num=n(), buy_value=mean(order_value), delivery_days=mean(delivery_days)) %>%
+  mutate(cust=c("New Customer"))
+EachCust$cust[EachCust$buy_num>1] = c("Old Customer")
+dfCust <- EachCust %>% group_by(cust) %>% summarize(size=n()) %>%
+  mutate(cust = factor(cust, levels = c("New Customer", "Old Customer")),
+         cumulative = c(2800, 0),
+         midpoint = (cumulative + cumulative + size) / 2,
+         label = paste0(round(size / sum(size) * 100, 2), "%"))
+ggplot(dfCust, aes(x = 1, weight = size, fill = cust)) +
+  geom_bar(width = 1, position = "stack") +
+  coord_polar(theta = "y") +
+  geom_text(aes(x = 1.3, y = midpoint, label = label)) +
+  theme_void() + 
+  scale_fill_brewer(palette = "Greens")
+
+## 新舊顧客平均每人花費金額
+dfCustValue <- EachCust %>% group_by(cust) %>% summarize(value=mean(buy_value))
+ggplot(dfCustValue, aes(x=cust, y=value)) + 
+  geom_col(width = 0.5)
+```
+<br>
+
+##### 1.3 營業額、訂單數量的時間分佈
+```{r}
+## 新增年、月、星期的欄位
+NewOrd <- NewOrd %>% mutate(year=format(order_delivered_customer_date,'%Y'),
+                            month=format(order_delivered_customer_date,'%m'),
+                            weekday=format(order_delivered_customer_date,'%A'),
+                            day=format(order_delivered_customer_date, '%m-%d'))
+
+## 年分析
+yearDf <- NewOrd %>% group_by(year) %>% summarize(num=n(), value=sum(order_item_value)) %>% na.omit()
+yearDf <- yearDf[c(-1),]
+yearDf$year <- yearDf$year %>% as.numeric()
+ggplot(data = yearDf) +
+  geom_bar(mapping = aes(y = value*max(yearDf$num)/max(yearDf$value), x = year), stat = "identity",
+           colour = gray(0.5), fill = gray(0.5), width = 0.5) +
+  geom_line(mapping = aes(y = num, x = year)) +
+  geom_point(mapping = aes(y = num, x = year), size = 3, shape = 21, fill = "white") +
+  scale_x_continuous(breaks=seq(2017, 2018, 1)) + 
+  scale_y_continuous(name = "訂單數量", limits = c(0,max(yearDf$num)),
+                     sec.axis = sec_axis(~. *max(yearDf$num)/max(yearDf$value), name = "營業額")) +
+  ggtitle("年") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+## 月分析
+monthDf <- NewOrd %>% group_by(month) %>% summarize(num=n(), value=sum(order_item_value)) %>% na.omit()
+monthDf$month <- monthDf$month %>% as.numeric()
+ggplot(data = monthDf) +
+  geom_bar(mapping = aes(y = value*max(monthDf$num)/max(monthDf$value), x = month), stat = "identity",
+           colour = gray(0.5), fill = gray(0.5)) +
+  geom_line(mapping = aes(y = num, x = month)) +
+  geom_point(mapping = aes(y = num, x = month), size = 3, shape = 21, fill = "white") +
+  scale_x_continuous(breaks=seq(1, 12, 1)) + 
+  scale_y_continuous(name = "訂單數量", limits = c(0,max(monthDf$num)),
+                     sec.axis = sec_axis(~. *max(monthDf$num)/max(monthDf$value), name = "營業額")) +
+  ggtitle("月") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+## 週分析
+weekDf <- NewOrd %>% group_by(weekday) %>% summarize(num=n(), value=sum(order_item_value)) %>% na.omit()
+weekDf$weekday <- as.numeric(c(1,2,3,5,6,7,4))
+weekDf <- weekDf[order(weekDf$weekday),]
+ggplot(data = weekDf) +
+  geom_bar(mapping = aes(y = value*max(weekDf$num)/max(weekDf$value), x = weekday), stat = "identity",
+           colour = gray(0.5), fill = gray(0.5)) +
+  geom_line(mapping = aes(y = num, x = weekday)) +
+  geom_point(mapping = aes(y = num, x = weekday), size = 3, shape = 21, fill = "white") +
+  scale_x_continuous(breaks=seq(1, 7, 1)) + 
+  scale_y_continuous(name = "訂單數量", limits = c(0,max(weekDf$num)),
+                     sec.axis = sec_axis(~. *max(weekDf$num)/max(weekDf$value), name = "營業額")) +
+  ggtitle("星期") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+## 整個期間的銷售趨勢
+allDf <- NewOrd %>% group_by(year, month) %>% summarize(num=n(), value=sum(order_item_value)) %>% na.omit()
+allDf$year <- as.numeric(allDf$year)
+allDf$month <- as.numeric(allDf$month)
+allDf$date <- as.Date(as.character(allDf$year*10000+allDf$month*100+01), format = "%Y%m%d")
+ggplot(data = allDf) +
+  geom_bar(mapping = aes(y = value*max(allDf$num)/max(allDf$value), x = date), stat = "identity",
+           colour = gray(0.5), fill = gray(0.5)) +
+  geom_line(mapping = aes(y = num, x = date)) +
+  geom_point(mapping = aes(y = num, x = date), size = 3, shape = 21, fill = "white") +
+  scale_y_continuous(name = "訂單數量", limits = c(0,max(allDf$num)),
+                     sec.axis = sec_axis(~. *max(allDf$num)/max(allDf$value), name = "營業額")) +
+  ggtitle("2016/10-2018/10") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+##### 1.4 有分期付款跟無分期付款的產品售價差異
+```{r}
+## 合併NewOrd與OrdPay
+NewOrd <- left_join(NewOrd, 
+                    select(OrdPay[!duplicated(OrdPay$order_id),], order_id, payment_type, payment_installments),
+                    by = "order_id")
+
+## 排除掉分期為0的列
+NewPay <- NewOrd[-c(which(NewOrd$payment_installments == 0)),]
+NewPay <- na.omit(NewPay)
+
+## 畫圓餅圖
+NewPay$installment <- NewPay$payment_installments
+NewPay$installment[NewPay$installment>=8] <- "8期以上"
+ggplot(NewPay, aes(x = 1, fill = factor(installment))) +
+  geom_bar(width = 1, position = "stack") +
+  coord_polar(theta = "y") +
+  theme_void() + 
+  scale_fill_brewer(palette="Pastel1") + 
+  ggtitle("分期付款的期數") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+## 將分期一期與一期以上分群並抓出售價
+installMents <- NewPay$order_item_value[NewPay$payment_installments>1]
+noninstallMents <- NewPay$order_item_value[NewPay$payment_installments==1]
+
+## 敘述統計
+summary(installMents)
+summary(noninstallMents)
+
+## F檢定:兩母體變異數是否有差異。p-value <0.0000000000000002，母體變異數不相同
+var.test(installMents, noninstallMents)
+
+## T檢定。p-value <0.0000000000000002，表示有分期與無分期的平均售價有顯著差異
+t.test(installMents, noninstallMents, var.equal = FALSE)
+```
+
+##### 1.4 不同商品種類的營業額與訂單數量的時間分布
+```{r}
+## 先找出含有多種產品的分類
+BigCats = names((Prod$product_category_name_english %>% table))[(Prod$product_category_name_english %>% table) > 300 ]
+
+## 若屬於大分類的，type則不變
+Prod$product_type = ifelse(Prod$product_category_name_english %in% BigCats, 
+                           Prod$product_category_name_english, 
+                           NA)
+
+## 合併子類別為大類別: product_type
+Prod[ grepl("furniture", Prod$product_category_name_english) , "product_type"] = "furniture"
+Prod[ grepl("art", Prod$product_category_name_english) , "product_type"] = "art"
+Prod[ grepl("fashio", Prod$product_category_name_english) , "product_type"] = "fashion"
+Prod[ grepl("construction_tools", Prod$product_category_name_english) , "product_type"] = "construction_tools"
+Prod[ grepl("costruction_tools", Prod$product_category_name_english) , "product_type"] = "construction_tools"
+Prod[ grepl("home", Prod$product_category_name_english) , "product_type"] = "home"
+Prod[ grepl("books", Prod$product_category_name_english) , "product_type"] = "books"
+Prod[ grepl("food", Prod$product_category_name_english) , "product_type"] = "food"
+Prod[ grepl("drink", Prod$product_category_name_english) , "product_type"] = "food"
+
+## 沒被合併到的子分類全部歸類為others
+Prod[is.na(Prod$product_type), "product_type"] = "others"
+Prod$product_type = as.factor(Prod$product_type)
+
+## 查看type分布
+table(Prod$product_type) %>% sort(decreasing = T)
+
+## 合併於NewOrd
+NewOrd <- left_join(NewOrd, select(OrdItm[!duplicated(OrdItm$order_id),], order_id, product_id),
+                    by="order_id")
+NewOrd <- left_join(NewOrd, select(Prod, product_id, product_type),
+                    by="product_id")
+
+## 取訂單數量倒數後五個商品種類
+NewProd <- NewOrd %>% filter(product_type==c("books", "luggage_accessories", "consoles_games", "food", "art"))
+
+## 整個期間商品種類的銷售趨勢
+allProdDf <- NewProd %>% group_by(product_type, year, month) %>%
+  summarize(num=n(), value=sum(order_item_value)) %>% na.omit()
+allProdDf$year <- as.numeric(allProdDf$year)
+allProdDf$month <- as.numeric(allProdDf$month)
+allProdDf$date <- as.Date(as.character(allProdDf$year*10000+allProdDf$month*100+01), format = "%Y%m%d")
+allProdDf <- allProdDf %>% filter(date>="2017-01-01")
+allProdDf <- allProdDf %>% filter(date<="2018-08-01")
+
+ggplot(data = allProdDf) +
+    geom_smooth(aes(y=value, x=date, col = product_type), method = "lm", se =F, linetype="dashed")
+
+## 取訂單數量前五個商品種類
+NewProd <- NewOrd %>% filter(product_type==c("furniture", "bed_bath_table",
+                                             "sports_leisure", "health_beauty", "housewares"))
+
+## 整個期間商品種類的銷售趨勢
+allProdDf <- NewProd %>% group_by(product_type, year, month) %>%
+  summarize(num=n(), value=sum(order_item_value)) %>% na.omit()
+allProdDf$year <- as.numeric(allProdDf$year)
+allProdDf$month <- as.numeric(allProdDf$month)
+allProdDf$date <- as.Date(as.character(allProdDf$year*10000+allProdDf$month*100+01), format = "%Y%m%d")
+allProdDf <- allProdDf %>% filter(date>="2017-01-01")
+allProdDf <- allProdDf %>% filter(date<="2018-08-01")
+
+ggplot(data = allProdDf) +
+    geom_smooth(aes(y=value, x=date, col = product_type), method = "lm", se =F, linetype="dashed")
+```
+
+
+
+
+
+
