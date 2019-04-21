@@ -47,9 +47,14 @@ table(Geo$geolocation_zip_code_prefix) %>% table %>% tail
 
 merge data: Custome + Order + Geolocation + OrderPayment
 ```{r}
+custlocation = Geo %>% group_by(geolocation_zip_code_prefix) %>% 
+  summarise(custlat = max(geolocation_lat),
+            custlng = max(geolocation_lng))
+
 COG = OrdPay[!duplicated(OrdPay$order_id),] %>% 
   right_join(Ord, by = "order_id") %>% 
-  left_join(Cust, by="customer_id")
+  left_join(Cust, by="customer_id") %>% 
+  left_join(custlocation, by=c("customer_zip_code_prefix"="geolocation_zip_code_prefix"))
 ```
 
 看每個order都來自哪裡
@@ -103,7 +108,7 @@ summary(States)
 g =  brazilPlot +
   geom_point(data = States,
              aes(x=lng, y=lat, color = cancelStatusProportion, size = noOrder)
-             )
+  )
 ggplotly(g)
 ```
 
@@ -112,6 +117,6 @@ ggplotly(g)
 ```{r}
 g = ggplot(States, aes(x=avgItem, y=avgRevenue, col=avgDeliveryDays)) +
   geom_point(aes(size=noCust)) +
-  geom_text(aes(label=geolocation_state), size=4)
+  geom_text(aes(label=geolocation_state), size=4, check_overlap=T, nudge_y = 3)
 ggplotly(g)
 ```
