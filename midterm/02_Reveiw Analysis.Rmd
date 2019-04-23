@@ -7,6 +7,11 @@ output: html_document
 
 <br>
 
+
+```{r}
+install.packages('qcc')
+```
+
 ```{r echo=T, message=F, cache=F, warning=F}
 rm(list=ls(all=T))
 Sys.setlocale("LC_ALL","C")
@@ -155,33 +160,36 @@ ggsave(g, file = "2080_Long Tail Theory.png",width = 7,height = 5)
 
 ##### 80/20法則
 
-* 前百分之二十的商品利潤約佔總利潤的75%
-
+###對產品進行分類,得出各類產品的總收益
 ```{r}
-# 總商品數量的百分之二十
-nrow(Prod)*0.2  # 6465.6
+ProductcatRev=group_by(Prod,product_category_name_english)%>%
+  summarize(totalproductrevenue=sum(revenue))
 
-TwenProdValue = cumsum(Prod$revenue[1:6466])[6466]
-TotalProdValue = sum(Prod$revenue)
-
-TwenProdValue/TotalProdValue  # 0.7474123
-```
-
-```{r}
-sort(Prod$revenue, decreasing = T)[6646]   # 399.96
-Twenproduct = filter(Prod, revenue>=399.96)
-# A=left_join(Twenproduct,OrdItm,by="product_id")
-# B=left_join(A,Ord,by="order_id")
 ```
 
 
-
+###對其產品類別做總收益排序，運用80/20法則
 ```{r}
-Twenproduct = filter(Twenproduct, avgDeliveryDays>0)
+highrevenuecategory=sort(ProductcatRev$totalproductrevenue,decreasing = T)[1:14]
 
-ggplot(Twenproduct,aes(x=noPurchase,y=avgDeliveryDays,color=revenue))+
-  geom_point()
+Twentyproduct_category_revenue=sum(highrevenuecategory)                    #前20%產品類別收入
+Totalproduct_category_revenue=sum(ProductcatRev$totalproductrevenue)       #總產品類別收入
+Twentyproduct_category_revenue/Totalproduct_category_revenue               #前20%的產品收益佔全部的76%
+ 
 ```
+
+###將產品類別畫成圖表，發現其分布類似於Pareto分布
+```{r}
+pareto_revenue=ProductcatRev$totalproductrevenue
+names(pareto_revenue)=ProductcatRev$product_category_name_english
+pareto.chart(pareto_revenue, 
+             ylab = "Revenue", 
+             main = " Pareto Chart",
+             cumperc = c(0,80,100)) 
+
+```
+
+發現health_beauty,watch gifts,bed_bath_table,sports_leisure,computers_accessories是這個平台主力的商品
 
 
 
@@ -299,8 +307,11 @@ ggsave(g, file = "Review Score.png",width = 7,height = 5)
 
 
 
+
+
 <br><br><br>
 ---
+
 
 
 
