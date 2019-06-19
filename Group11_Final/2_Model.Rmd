@@ -1,0 +1,220 @@
+---
+title: "TF2_建立模型" 
+author: "第十一組"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: style.css
+---
+
+### Loading & Preparing Data
+```{r echo=T, message=F, cache=F, warning=F}
+pacman::p_load(dplyr,ggplot2,caTools)
+rm(list=ls(all=TRUE))
+Sys.setlocale("LC_TIME","C")
+load("data/tf2.rdata")
+```
+
+##### Spliting for Classification 
+```{r}
+TR = subset(A, spl)
+TS = subset(A, !spl)
+```
+<br><hr>
+
+### Classification Model
+```{r}
+glm1 = glm(buy ~ ., TR[,c(2:29, 31)], family=binomial()) 
+summary(glm1)
+pred =  predict(glm1, TS, type="response")
+cm = table(actual = TS$buy, predict = pred > 0.5); cm
+acc.ts = cm %>% {sum(diag(.))/sum(.)}; acc.ts          # 0.69998
+colAUC(pred, TS$buy)                                   # 0.7556
+```
+<br><hr>
+
+### Regression Model
+```{r}
+A2 = subset(A, A$buy) %>% mutate_at(c("m","rev","amount"), log10)
+TR2 = subset(A2, spl2)
+TS2 = subset(A2, !spl2)
+```
+
+```{r}
+lm1 = lm(amount ~ ., TR2[,c(2:30)])
+summary(lm1)
+```
+
+```{r}
+r2.tr = summary(lm1)$r.sq
+SST = sum((TS2$amount - mean(TR2$amount))^ 2)
+SSE = sum((predict(lm1, TS2) -  TS2$amount)^2)
+r2.ts = 1 - (SSE/SST)
+c(r2.tr, r2.ts)
+```
+<br><hr>
+
+### Prediction
+Aggregate data 2000-12-01 ~ 2001~02-28. 
+```{r}
+load("data/tf0.rdata")
+d0 = max(B0$date) + 1
+D = B0 %>% 
+  filter(date >= as.Date("2000-12-01")) %>% 
+  mutate(days = as.integer(difftime(d0, date, units="days"))) %>% 
+  group_by(cid) %>% summarise(
+    r = min(days),      # recency
+    s = max(days),      # seniority
+    f = n(),            # frquency
+    m = mean(total),    # monetary
+    rev = sum(total),   # total revenue contribution
+    raw = sum(profit),  # total gross profit contribution
+    age = age[1],       # age group
+    area = area[1]     # area code
+  ) %>% data.frame      # 28584
+nrow(D)
+```
+
+##### 其他變數
+
+**前10個熱銷產品分別購買次數**
+```{r}
+library(Matrix)
+library(slam)
+
+cpm = A0 %>% filter(date >= as.Date("2000-12-01")) %>% 
+  subset(cid %in% D$cid) %>% 
+  xtabs(~ cid + pid, ., sparse=T) %>% 
+  as.matrix
+
+# colnames(cpm) %in% colnames(A[,10:19])
+cpm = cpm[, colSums(cpm) > 10]
+cpm = cpm[, order(-colSums(cpm))]
+cpm = cpm %>% as.matrix 
+(D$cid == rownames(cpm)) %>% sum
+
+D = cbind(D, cpm[,1:10])
+colnames(D)[10:19] = sapply(seq(1,10,1), function(x){
+  names = paste0("p",x)
+})
+```
+
+**顧客年齡群**
+```{r}
+D$ageGroup<- as.factor(D$age)
+D$ageGroup<-factor(D$ageGroup, levels=c("a20", "a25", "a30", "a35","a40", "a45", "a50", "a55", "a60", "a65", "na"), labels=c("A1", "A1", "A1", "A1", "A2", "A2", "A2", "A3", "A3", "A3", "na"))
+```
+
+**聖誕節購買幾次**
+```{r}
+CHR1 = as.Date("2000-12-17")
+CHR2= as.Date("2000-12-23")
+D = B0 %>% 
+  filter(date>=as.Date("2000-12-01")) %>% 
+  group_by(cid) %>% 
+  summarise(
+    CHR = sum( ifelse(date > CHR1 & date < CHR2, 1, 0 ) )
+  ) %>% 
+  left_join(D,.)
+```
+
+**消費者消費傾向於平日或假日**
+```{r}
+mx = B0 %>% 
+  filter(date>=as.Date("2000-12-01")) %>% 
+  mutate(wday = format(date, "%w")) %>% 
+  xtabs(~ cid + wday,.)
+
+mx = mx / rowSums(mx)  # count -> probability
+
+W = data.frame(as.character(rownames(mx)), as.matrix.data.frame(mx)) %>% 
+  setNames(c("cust","W7","W1","W2","W3","W4","W5","W6")) %>% 
+  mutate(
+    wk15 = W1+W2+W3+W4+W5,
+    wk67 = W6+W7
+  )
+
+W$wdPref = ifelse((W$wk15 < W$wk67), "Weekend",
+         ifelse(W$wk15 == W$wk67, "Na", "Weekday"))
+W$wdPref = as.factor(W$wdPref)
+
+D = merge(D, W[,c("cust","wdPref")], by.x="cid", by.y="cust")
+```
+
+**顧客最常星期幾來買(wd)**
+```{r}
+maxWeekday = function(x){
+  y = format(x,"%a") %>% table
+  d = ifelse(sum(y==max(y))>1, "na", names(which.max(y)))
+  return(d)
+}
+```
+
+**其他衍生變數**
+```{r}
+NewVar = B0 %>% 
+  filter(date>=as.Date("2000-12-01")) %>% 
+  group_by(cid) %>% 
+  summarise(
+    weekday = maxWeekday(date),                                                   # 顧客最常禮拜幾來買
+    avgPrice = mean(total / pieces),                                              # 商品平均單價
+    mon1 = sum(date < as.Date("2001-01-01")),                                     # 第一個月購買的次數
+    mon2 = sum((date < as.Date("2001-02-01") & (date >= as.Date("2001-01-01")))), # 第二個月購買的次數
+    mon3 = sum(date >= as.Date("2001-02-01")),                                    # 第三個月購買的次數
+    in114_115 = ifelse(area[1] %in% c("A114", "A115"), T, F)                    # 居住區域是否在A114.A115
+  ) %>% data.frame  
+
+NewVar$weekday = factor(NewVar$weekday, levels= c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "na"))
+D = merge(D, NewVar, all.x = T)
+D$cycle = D$s/D$f
+```
+
+```{r}
+summary(D)
+```
+
+```{r}
+setdiff(colnames(A), colnames(D))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+In `B`, there is a record for each customer. `B$Buy` is the probability of buying in March.
+```{r}
+D$Buy = predict(glm1, D, type="response")
+```
+
+<span style="font-size:24px">`r "\U1F4A1"`：</span>
+預測購買金額時要記得做指數、對數轉換！
+
+```{r}
+D2 = D %>% mutate_at(c("m","rev"), log10)
+D$Rev = 10^predict(lm1, D2)
+```
+
+```{r fig.height=2.4, fig.width=7.2}
+par(mfrow=c(1,2), cex=0.8)
+hist(D$Buy)
+hist(log(D$Rev,10))
+```
+
+將預測結果存起來
+```{r}
+save(D, file="data/tf3.rdata")
+```
+
+<br><br><hr><br><br>
+
+
